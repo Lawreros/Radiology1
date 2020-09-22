@@ -2,6 +2,7 @@ import pydicom as pyd
 import numpy as np
 import math
 from time import sleep
+from matplotlib import pyplot as plt
 
 
 file_dir = '/home/ross/Documents/CODE/Radiology/Project1/data/corgi-Head-FC42'
@@ -44,12 +45,12 @@ if CNR == True: #Currently only looking at first slice
     # Copy background ROI
     for idx, i in enumerate(range(bg_roi[2],bg_roi[3]+1)):
         for idx1, j in enumerate(range(bg_roi[0],bg_roi[1]+1)):
-            back_roi[idx][idx1] = images[1][i][j] #Change first value for multi-slice use
+            back_roi[idx][idx1] = images[0][i][j] #Change first value for multi-slice use
     
     #Copy insert ROI
     for idx, i in enumerate(range(in_roi[2],in_roi[3]+1)):
         for idx1, j in enumerate(range(in_roi[0],in_roi[1]+1)):
-            insert_roi[idx][idx1] = images[1][i][j] #Change first value for multi-slice use
+            insert_roi[idx][idx1] = images[0][i][j] #Change first value for multi-slice use
     
 
     # Average Bg_roi
@@ -68,6 +69,7 @@ if CNR == True: #Currently only looking at first slice
     print(f"Ins_roi STD = {bstd}")
 
 if NPS:
+    print('Begining NPS calculations')
     #Create Noise Map
     dim = images.shape
 
@@ -86,20 +88,20 @@ if NPS:
             for x in range(dim[2]):
                 # Account for fringe cases where the kernel exceeds the image
                 if x-kernel[0] < 0 and y-kernel[1] < 0:
-                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][0:y+kernel[1], 0:x+kernel[0]])
+                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][0:y+kernel[1]+1, 0:x+kernel[0]+1])
                 elif x+kernel[0] > dim[2] and y+kernel[1] > dim[1]:
                     noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:dim[1], x-kernel[0]:dim[2]])
                 elif x-kernel[0] < 0:
-                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:y+kernel[1], 0:x+kernel[0]]) 
+                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:y+kernel[1]+1, 0:x+kernel[0]+1]) 
                 elif y-kernel[1] < 0:
-                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][0:y+kernel[1], x-kernel[0]:x+kernel[0]]) 
+                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][0:y+kernel[1]+1, x-kernel[0]:x+kernel[0]+1]) 
                 elif x+kernel[0] >= dim[2]:
-                     noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:y+kernel[1], x-kernel[0]:(dim[0]-1)])
+                     noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:y+kernel[1]+1, x-kernel[0]:dim[0]])
                 elif y+kernel[1] >= dim[1]:
-                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:(dim[1]-1), x-kernel[0]:x+kernel[0]])
+                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:dim[1], x-kernel[0]:x+kernel[0]+1])
                 # Now for when everything is good...
                 else:
-                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:y+kernel[1], x-kernel[0]:x+kernel[0]])
+                    noise_map[z][y][x] = images[z][y][x] - np.mean(images[z][y-kernel[1]:y+kernel[1]+1, x-kernel[0]:x+kernel[0]+1])
 
     #TODO: Add creation of test images to make sure that the noise map makes sense
 
@@ -108,12 +110,31 @@ if NPS:
     ax = dataset.PixelSpacing[0]
     ay = dataset.PixelSpacing[1]
     
-    #Calculate fourier transform for all images in the stack
-    nps_roi = [1,65,20,85] #[x1,x2,y1,y2]
+    #Calculate coefficients for NPS calculation
+    nps_roi = [97,220,257,400] #[x1,x2,y1,y2]
+    coeff = (ax*ay)/((abs(nps_roi[0]-nps_roi[1])+1)*(abs(nps_roi[2]-nps_roi[3])+1))
 
-    coeff = ((abs(nps_roi[0]-nps_roi[1])+1)*(abs(nps_roi[2]-nps_roi[3])+1))/(ax*ay)
+    #Get Fourier transforms from ROI for each slice
 
+    #Get slice:
+    # Copy nps ROI
+    a = abs(nps_roi[0]-nps_roi[1])+1
+    b = abs(nps_roi[2]-nps_roi[3])+1
+    nps_slice = np.zeros((b,a))
+    nps_stack = np.zeros((len(files),b,a))
+    for idx, i in enumerate(range(nps_roi[2],nps_roi[3]+1)):
+        for idx1, j in enumerate(range(nps_roi[0],nps_roi[1]+1)):
+            nps_slice[idx][idx1] = noise_map[0][i][j] #Change first value for multi-slice use
+    
+    nps_stack[0]=coeff*abs(np.fft.fft2(nps_slice))*abs(np.fft.fft2(nps_slice))
+    nps_stack[0] = np.fft.fftshift(nps_stack[0])
+    
     #Plot 2D resulting matrix with color
+    fig, ax = plt.subplots(1,1)
+    ax.pcolor(nps_stack[0])
+    plt.savefig("test.png")
+
+    
 
 if MTF:
     # Select line
