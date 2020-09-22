@@ -111,7 +111,7 @@ if NPS:
     #Calculate fourier transform for all images in the stack
     nps_roi = [1,65,20,85] #[x1,x2,y1,y2]
 
-    #coeff = 
+    coeff = ((abs(nps_roi[0]-nps_roi[1])+1)*(abs(nps_roi[2]-nps_roi[3])+1))/(ax*ay)
 
     #Plot 2D resulting matrix with color
 
