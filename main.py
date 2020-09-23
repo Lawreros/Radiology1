@@ -9,19 +9,16 @@ file_dir = '/home/ross/Documents/CODE/Radiology/Project1/data/corgi-Head-FC42'
 # TODO: Implement system for reading in multitude of images based on number range
 
 files=list()
-for num in range(211,213): #input range of files you want to analyze: range(start, stop+1)
-    files.append(f"{file_dir}/I{num}0000")
+for num in range(211,213): #because files are labeled numericly, you can input range of files you want to analyze: range(start, stop+1)
+    files.append(f"{file_dir}/I{num}0000") #There are better ways to do this, but this work for now
 
-
+# Which analysis you want to run:
 CNR = True
 NPS = True
 MTF = True
 
-#rois of interest
-bg_roi = [1,3,0,5] #input for corners of square ROI [x1,x2,y1,y2]
-in_roi = [1,3,2,4]
 
-
+# Load in each file and add it to the images 3D array (think of the images array as a stack)
 for idx, dicom in enumerate(files):
     dataset = pyd.dcmread(dicom)
     print(f'The pixel sizes for this image are: {dataset.PixelSpacing[0]} mm by {dataset.PixelSpacing[1]} mm')
@@ -36,39 +33,49 @@ for idx, dicom in enumerate(files):
         images[idx] = dataset.pixel_array
 
 if CNR == True: #Currently only looking at first slice
-    print(f"starting CNR")
 
-    #Segment out roi's
-    back_roi = np.zeros((abs(bg_roi[2]-bg_roi[3])+1,abs(bg_roi[0]-bg_roi[1])+1))
-    insert_roi = np.zeros((abs(in_roi[2]-in_roi[3])+1,abs(in_roi[0]-in_roi[1])+1))
+    #rois of interest
+    bg_roi = [1,3,0,5] #input the x and y values that define the square ROI [x1,x2,y1,y2]
+    in_roi = [1,3,2,4]
 
-    # Copy background ROI
-    for idx, i in enumerate(range(bg_roi[2],bg_roi[3]+1)):
-        for idx1, j in enumerate(range(bg_roi[0],bg_roi[1]+1)):
-            back_roi[idx][idx1] = images[0][i][j] #Change first value for multi-slice use
-    
-    #Copy insert ROI
-    for idx, i in enumerate(range(in_roi[2],in_roi[3]+1)):
-        for idx1, j in enumerate(range(in_roi[0],in_roi[1]+1)):
-            insert_roi[idx][idx1] = images[0][i][j] #Change first value for multi-slice use
-    
+    for sl, filename in enumerate(files):
+        print(f"starting CNR")
 
-    # Average Bg_roi
-    a = np.average(back_roi)
-    astd = np.std(back_roi)
+        #Segment out roi's
+        back_roi = np.zeros((abs(bg_roi[2]-bg_roi[3])+1,abs(bg_roi[0]-bg_roi[1])+1))
+        insert_roi = np.zeros((abs(in_roi[2]-in_roi[3])+1,abs(in_roi[0]-in_roi[1])+1))
 
-    # Average Ins_roi
-    b = np.average(insert_roi)
-    bstd = np.std(insert_roi)
+        # Copy background ROI
+        for idx, i in enumerate(range(bg_roi[2],bg_roi[3]+1)):
+            for idx1, j in enumerate(range(bg_roi[0],bg_roi[1]+1)):
+                back_roi[idx][idx1] = images[sl][i][j] #Change first value for multi-slice use
+        
+        #Copy insert ROI
+        for idx, i in enumerate(range(in_roi[2],in_roi[3]+1)):
+            for idx1, j in enumerate(range(in_roi[0],in_roi[1]+1)):
+                insert_roi[idx][idx1] = images[sl][i][j] #Change first value for multi-slice use
+        
 
-    C = abs(a-b)/(0.5*(astd+bstd))
-    print(f"CNR = {C}")
-    print(f"Bkg_roi Average = {a}")
-    print(f"Ins_roi Average = {a}")
-    print(f"Bkg_roi STD = {astd}")
-    print(f"Ins_roi STD = {bstd}")
+        # Average Bg_roi
+        a = np.average(back_roi)
+        astd = np.std(back_roi)
+
+        # Average Ins_roi
+        b = np.average(insert_roi)
+        bstd = np.std(insert_roi)
+
+        C = abs(a-b)/(0.5*(astd+bstd))
+        print(f"Slice : {filename.split('/')[-1]}")
+        print(f"CNR = {C}")
+        print(f"Bkg_roi Average = {a}")
+        print(f"Ins_roi Average = {a}")
+        print(f"Bkg_roi STD = {astd}")
+        print(f"Ins_roi STD = {bstd}")
 
 if NPS:
+
+    nps_roi = [97,220,257,400] #[x1,x2,y1,y2]
+
     print('Begining NPS calculations')
     #Create Noise Map
     dim = images.shape
@@ -84,6 +91,7 @@ if NPS:
     kernel[1] = math.floor(kernel[1]/2)
 
     for z in range(dim[0]):
+        print(f"Processing : {files[z].split('/')[-1]}")
         for y in range(dim[1]):
             for x in range(dim[2]):
                 # Account for fringe cases where the kernel exceeds the image
@@ -111,10 +119,8 @@ if NPS:
     ay = dataset.PixelSpacing[1]
     
     #Calculate coefficients for NPS calculation
-    nps_roi = [97,220,257,400] #[x1,x2,y1,y2]
     coeff = (ax*ay)/((abs(nps_roi[0]-nps_roi[1])+1)*(abs(nps_roi[2]-nps_roi[3])+1))
 
-    #Get Fourier transforms from ROI for each slice
 
     #Get slice:
     # Copy nps ROI
@@ -122,17 +128,36 @@ if NPS:
     b = abs(nps_roi[2]-nps_roi[3])+1
     nps_slice = np.zeros((b,a))
     nps_stack = np.zeros((len(files),b,a))
-    for idx, i in enumerate(range(nps_roi[2],nps_roi[3]+1)):
-        for idx1, j in enumerate(range(nps_roi[0],nps_roi[1]+1)):
-            nps_slice[idx][idx1] = noise_map[0][i][j] #Change first value for multi-slice use
+    for sl in range(len(files)):
+        for idx, i in enumerate(range(nps_roi[2],nps_roi[3]+1)):
+            for idx1, j in enumerate(range(nps_roi[0],nps_roi[1]+1)):
+                nps_slice[idx][idx1] = noise_map[sl][i][j] #Change first value for multi-slice use
     
-    nps_stack[0]=coeff*abs(np.fft.fft2(nps_slice))*abs(np.fft.fft2(nps_slice))
-    nps_stack[0] = np.fft.fftshift(nps_stack[0])
+        #Get Fourier transforms from ROI for each slice
+        nps_stack[sl]=abs(np.fft.fft2(nps_slice))*abs(np.fft.fft2(nps_slice))
+    
+    nps_average = np.mean(nps_stack, axis=0)
+
+    # Use fftshift in order to get a clearer graph
+    test2 = np.fft.fftshift(coeff*nps_average)
     
     #Plot 2D resulting matrix with color
-    fig, ax = plt.subplots(1,1)
-    ax.pcolor(nps_stack[0])
-    plt.savefig("test.png")
+    fig, axi = plt.subplots(1,1)
+    
+    stepx = ((1/ax)/(abs(nps_roi[0]-nps_roi[1])+1))
+    stepy = ((1/ay)/(abs(nps_roi[2]-nps_roi[3])+1))
+
+    x_labels = np.arange(-(0.5/ax), (0.5/ax)+stepx, 10*stepx)
+    x_ticks = np.arange(0, (abs(nps_roi[0]-nps_roi[1])+1), 10)
+    plt.xticks(ticks=x_ticks, labels=x_labels)
+
+    y_labels = np.arange(-(0.5/ay), (0.5/ay)+stepy, 10*stepy)
+    y_ticks = np.arange(0, (abs(nps_roi[2]-nps_roi[3])+1), 10)
+    plt.yticks(ticks=y_ticks, labels=y_labels)
+
+    #TODO: Add colorbar
+    axi.pcolor(test2,cmap="hot")
+    plt.savefig("NPS.png")
 
     
 
