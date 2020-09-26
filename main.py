@@ -32,7 +32,7 @@ for idx, dicom in enumerate(files):
     else:
         images[idx] = dataset.pixel_array
 
-if CNR == True: #Currently only looking at first slice
+if CNR == True: #Generates a value for every slice
 
     #rois of interest
     bg_roi = [1,3,0,5] #input the x and y values that define the square ROI [x1,x2,y1,y2]
@@ -131,7 +131,7 @@ if NPS:
     for sl in range(len(files)):
         for idx, i in enumerate(range(nps_roi[2],nps_roi[3]+1)):
             for idx1, j in enumerate(range(nps_roi[0],nps_roi[1]+1)):
-                nps_slice[idx][idx1] = noise_map[sl][i][j] #Change first value for multi-slice use
+                nps_slice[idx][idx1] = noise_map[sl][i][j]
     
         #Get Fourier transforms from ROI for each slice
         nps_stack[sl]=abs(np.fft.fft2(nps_slice))*abs(np.fft.fft2(nps_slice))
@@ -162,7 +162,63 @@ if NPS:
     
 
 if MTF:
-    # Select line
-    pass
+    # MTF without using oversampling
+
+    #Choose the x and y coordinates for the ends of the line you will be using (cannot be diagonal)
+    esf_roi = [55,235,90,235] #[x1, y1, x2, y2] inclusive
+    slice_1 = 1 #The slice from the image stack that you want to take the esf from
+
+    #determine length of line
+    if esf_roi[0] == esf_roi[2]:
+        esf_len = [abs(esf_roi[1]-esf_roi[3])+1,1]
+    else:
+        esf_len = [abs(esf_roi[0]-esf_roi[2])+1,0]
+    
+    esf = np.zeros(esf_len[0])
+
+    for idx, i in enumerate(range(esf_roi[esf_len[1]], esf_roi[esf_len[1]+2]+1)):
+        #if line is along x axis
+        if esf_len[1] == 1:
+            esf[idx] = images[slice_1][esf_roi[0]][i]
+        else:
+        #if line is along y axis
+            esf[idx] = images[slice_1][esf_roi[1]][i]
+
+
+    #Normalize
+    a = np.amax(esf)
+    esf = esf/a
+
+    #Take derivative (and find where it goes form positive to negative)
+    lsf = np.diff(esf)/(dataset.PixelSpacing[0]) #denominator is the dx value, or the voxel size
+
+    # Plot both the normalized esf and lsf on a graph
+    fig2, (ax2, ax3) = plt.subplots(nrows=1, ncols=2)
+    x_values = [i for i in range(len(esf))]
+    ax2.plot(x_values,esf)
+    ax2.plot(x_values[:-1],lsf)
+    ax2.set_xlabel("X axis")
+    ax2.set_ylabel("Y axis")
+    
+
+    #Run Fourier transform on LSF to get MTF
+    mtf = np.fft.fft(lsf)
+    #Save figures
+    x_values = [i for i in range(len(mtf))]
+    ax3.plot(x_values, mtf)
+    ax3.set_xlabel("X axis")
+
+    fig2.show()
+    fig2.savefig('ESF+LSF.png')
+
+    # NOW DO OVERSAMPLED METHOD
+
+    # ask for angle
+    # ask for line location
+    # ask for step size between scans
+
+    #Calculate shifted ESF's
+
+
 
 print('oof')
