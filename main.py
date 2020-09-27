@@ -9,12 +9,12 @@ file_dir = '/home/ross/Documents/CODE/Radiology/Project1/data/corgi-Head-FC42'
 # TODO: Implement system for reading in multitude of images based on number range
 
 files=list()
-for num in range(211,213): #because files are labeled numericly, you can input range of files you want to analyze: range(start, stop+1)
+for num in range(209,431): #because files are labeled numericly, you can input range of files you want to analyze: range(start, stop+1)
     files.append(f"{file_dir}/I{num}0000") #There are better ways to do this, but this work for now
 
 # Which analysis you want to run:
-CNR = True
-NPS = True
+CNR = False
+NPS = False
 MTF = True
 
 
@@ -165,7 +165,7 @@ if MTF:
     # MTF without using oversampling
 
     #Choose the x and y coordinates for the ends of the line you will be using (cannot be diagonal)
-    esf_roi = [55,235,90,235] #[x1, y1, x2, y2] inclusive
+    esf_roi = [240,2,240,30] #[x1, y1, x2, y2] inclusive
     slice_1 = 1 #The slice from the image stack that you want to take the esf from
 
     #determine length of line
@@ -177,18 +177,18 @@ if MTF:
     esf = np.zeros(esf_len[0])
 
     for idx, i in enumerate(range(esf_roi[esf_len[1]], esf_roi[esf_len[1]+2]+1)):
-        #if line is along x axis
-        if esf_len[1] == 1:
-            esf[idx] = images[slice_1][esf_roi[0]][i]
-        else:
         #if line is along y axis
+        if esf_len[1] == 1:
+            esf[idx] = images[slice_1][i][esf_roi[0]]
+        else:
+        #if line is along x axis
             esf[idx] = images[slice_1][esf_roi[1]][i]
 
 
     #Normalize
-    a = np.amax(esf)
-    esf = esf/a
-
+    a = abs(np.amin(esf))
+    esf = (esf+a)/np.amax(esf+a)
+    
     #Take derivative (and find where it goes form positive to negative)
     lsf = np.diff(esf)/(dataset.PixelSpacing[0]) #denominator is the dx value, or the voxel size
 
@@ -197,28 +197,132 @@ if MTF:
     x_values = [i for i in range(len(esf))]
     ax2.plot(x_values,esf)
     ax2.plot(x_values[:-1],lsf)
-    ax2.set_xlabel("X axis")
-    ax2.set_ylabel("Y axis")
+    ax2.set_xlabel("Voxels")
+    ax2.set_ylabel("Normalized Intensity")
     
 
+    #Area-normalize LSF
+    lsf = lsf/sum(lsf)
+
+
     #Run Fourier transform on LSF to get MTF
-    mtf = np.fft.fft(lsf)
+    mtf = np.fft.fft(lsf)#/len(lsf)
+    mtf = mtf[range(int(len(mtf)/2))]
+
+    tpCount = len(lsf)
+    samplingFrequency = 1
+    values = np.arange(int(tpCount/2))
+    timePeriod = tpCount/samplingFrequency
+    frequencies = values/timePeriod
+
+
     #Save figures
-    x_values = [i for i in range(len(mtf))]
-    ax3.plot(x_values, mtf)
+    #x_values = [i for i in range(len(mtf))]
+    ax3.plot(frequencies, np.abs(mtf))
     ax3.set_xlabel("X axis")
 
-    fig2.show()
+    fig2.show(fig2)
     fig2.savefig('ESF+LSF.png')
 
-    # NOW DO OVERSAMPLED METHOD
+    ######## NOW DO OVERSAMPLED METHOD ##############
 
-    # ask for angle
     # ask for line location
+
+    #esf_roi = [55,235,90,235] Uncomment if you want to use a different line
+
     # ask for step size between scans
+    slices = [0,84,4] #[start, stop, step]
+    # ask for angle
+    angle = 0.007 # angle in degrees
 
-    #Calculate shifted ESF's
+    #determine length of line
+    if esf_roi[0] == esf_roi[2]:
+        esf_len = [abs(esf_roi[1]-esf_roi[3])+1,1]
+    else:
+        esf_len = [abs(esf_roi[0]-esf_roi[2])+1,0]
+    
+    esf = np.zeros(esf_len[0])
 
+
+    #Create bins for ESF data from each slice:
+    bins = 10 #number of bins
+    over_esf = []
+    for i in range(bins*esf_len[0]):
+        over_esf.append(None)
+    over_bin = np.zeros(bins*(esf_len[0]-1))
+
+    #Calculate shifted ESF's and place them into bins
+
+    ay = dataset.PixelSpacing[0]
+    az = float(dataset.SliceThickness)
+
+    for s in range(slices[0],slices[1],slices[2]):
+        for idx, i in enumerate(range(esf_roi[esf_len[1]], esf_roi[esf_len[1]+2]+1)):
+
+            dis = (idx*ay)-(s*az*math.sin(angle))
+            bi = math.floor(dis/(ay/bins))
+            bi = max(0,bi)
+            #if line is along y axis
+            if esf_len[1] == 1:
+                if over_esf[bi] == None:
+                    over_esf[bi] = [images[s][i][esf_roi[0]]]
+                else:
+                    over_esf[bi].append(images[s][i][esf_roi[0]])
+            else:
+            #if line is along x axis
+                if over_esf[bi] == None:
+                    over_esf[bi] = [images[s][esf_roi[1]][i]]
+                else:
+                    over_esf[bi].append(images[s][esf_roi[1]][i])
+    
+    #Average each bin
+    for i in range(len(over_esf)):
+        try:
+            if len(over_esf[i]) > 1:
+                over_bin[i] = sum(over_esf[i])/(len(over_esf[i]))
+            elif not over_esf[i] == None:
+                over_bin[i] = over_esf[i][0]
+        except:
+            pass
+    
+    #Normalize
+    a = abs(np.amin(over_bin))
+    over_esf = (over_bin+a)/(np.amax(over_bin+a))
+
+    #Take derivative (and find where it goes form positive to negative)
+    lsf = np.diff(over_esf)/(ay/bins) #denominator is the dx value, or the voxel size
+
+    # Plot both the normalized esf and lsf on a graph
+    fig3, (ax4, ax5) = plt.subplots(nrows=1, ncols=2)
+    x_values = [i for i in range(len(over_esf))]
+    ax4.plot(x_values,over_esf)
+    ax4.plot(x_values[:-1],lsf)
+    ax4.set_xlabel("Voxels")
+    ax4.set_ylabel("Normalized Intensity")
+
+
+    #Area-normalize LSF
+    lsf = lsf/sum(lsf)
+
+    #Run Fourier transform on LSF to get MTF
+    over_mtf = np.fft.fft(lsf)#/len(lsf)
+    over_mtf = over_mtf[range(int(len(over_mtf)/2))]
+    #Save figures
+    #x_values = [i for i in range(len(over_mtf))]
+    
+    tpCount = len(lsf)
+    samplingFrequency = bins
+    values = np.arange(int(tpCount/2))
+
+    timePeriod = tpCount/samplingFrequency
+
+    frequencies = values/timePeriod
+
+    ax5.plot(frequencies, abs(over_mtf))
+    ax5.set_xlabel("X axis")
+
+    fig3.show()
+    fig3.savefig('OVER_ESF+LSF.png')
 
 
 print('oof')
