@@ -9,12 +9,12 @@ file_dir = '/home/ross/Documents/CODE/Radiology/Project1/data/corgi-Head-FC42'
 # TODO: Implement system for reading in multitude of images based on number range
 
 files=list()
-for num in range(209,431): #because files are labeled numericly, you can input range of files you want to analyze: range(start, stop+1)
+for num in range(209,211): #because files are labeled numericly, you can input range of files you want to analyze: range(start, stop+1)
     files.append(f"{file_dir}/I{num}0000") #There are better ways to do this, but this work for now
 
 # Which analysis you want to run:
 CNR = False
-NPS = False
+NPS = True
 MTF = True
 
 
@@ -68,13 +68,13 @@ if CNR == True: #Generates a value for every slice
         print(f"Slice : {filename.split('/')[-1]}")
         print(f"CNR = {C}")
         print(f"Bkg_roi Average = {a}")
-        print(f"Ins_roi Average = {a}")
+        print(f"Ins_roi Average = {b}")
         print(f"Bkg_roi STD = {astd}")
         print(f"Ins_roi STD = {bstd}")
 
 if NPS:
 
-    nps_roi = [97,220,257,400] #[x1,x2,y1,y2]
+    nps_roi = [97,220,256,400] #[x1,x2,y1,y2]
 
     print('Begining NPS calculations')
     #Create Noise Map
@@ -115,8 +115,8 @@ if NPS:
 
     # With our noise map created, we can now calculate the Noise-Power Spectrum
     # Voxel size in x and y direction
-    ax = dataset.PixelSpacing[0]
-    ay = dataset.PixelSpacing[1]
+    ax = float(dataset.PixelSpacing[0])
+    ay = float(dataset.PixelSpacing[1])
     
     #Calculate coefficients for NPS calculation
     coeff = (ax*ay)/((abs(nps_roi[0]-nps_roi[1])+1)*(abs(nps_roi[2]-nps_roi[3])+1))
@@ -148,10 +148,18 @@ if NPS:
     stepy = ((1/ay)/(abs(nps_roi[2]-nps_roi[3])+1))
 
     x_labels = np.arange(-(0.5/ax), (0.5/ax)+stepx, 10*stepx)
-    x_ticks = np.arange(0, (abs(nps_roi[0]-nps_roi[1])+1), 10)
+    for idx, i in enumerate(x_labels):
+        _ = str(i)
+        x_labels[idx] = _[0:4]
+        
+    x_ticks = np.arange(0, (abs(nps_roi[0]-nps_roi[1])+2), 10)
     plt.xticks(ticks=x_ticks, labels=x_labels)
 
     y_labels = np.arange(-(0.5/ay), (0.5/ay)+stepy, 10*stepy)
+    for idx, i in enumerate(y_labels):
+        _ = str(i)
+        y_labels[idx] = _[0:4]
+
     y_ticks = np.arange(0, (abs(nps_roi[2]-nps_roi[3])+1), 10)
     plt.yticks(ticks=y_ticks, labels=y_labels)
 
@@ -227,7 +235,6 @@ if MTF:
     ######## NOW DO OVERSAMPLED METHOD ##############
 
     # ask for line location
-
     #esf_roi = [55,235,90,235] Uncomment if you want to use a different line
 
     # ask for step size between scans
